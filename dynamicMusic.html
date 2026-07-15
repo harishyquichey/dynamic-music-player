@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dynamic Music Analyzer</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --background: #111111;
+      --panel: #1f1f1f;
+      --panel-soft: #181818;
+      --border: #4b4b4b;
+      --text: #ffffff;
+      --muted: #b8b8b8;
+      --accent: #7a6bff;
+      --accent-soft: rgba(122, 107, 255, 0.24);
+      --warning: #f0c36a;
+      --danger: #ff7777;
+      --success: #74d69a;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      min-height: 100%;
+      margin: 0;
+      background: var(--background);
+      color: var(--text);
+      font-family: "Courier New", Courier, monospace;
+    }
+
+    body {
+      padding: 18px;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button {
+      border: 2px solid #ffffff;
+      border-radius: 9px;
+      background: var(--panel);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    button:hover:not(:disabled) {
+      background: #2d2d2d;
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.48;
+    }
+
+    .app-shell {
+      width: min(1180px, 100%);
+      margin: 0 auto;
+    }
+
+    .transport {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      padding: 14px;
+      border: 2px solid var(--accent);
+      border-radius: 12px;
+      background: rgba(17, 17, 17, 0.96);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    }
+
+    .transport-row {
+      display: grid;
+      grid-template-columns: auto auto auto minmax(120px, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .transport-button {
+      min-width: 116px;
+      height: 48px;
+      border-color: var(--accent);
+      font-weight: bold;
+    }
+
+    .small-button {
+      height: 40px;
+      padding: 0 14px;
+    }
+
+    .file-button {
+      display: inline-flex;
+      min-height: 40px;
+      align-items: center;
+      justify-content: center;
+      padding: 0 14px;
+      border: 2px solid var(--border);
+      border-radius: 9px;
+      background: var(--panel);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .file-button:hover {
+      background: #2d2d2d;
+    }
+
+    #filePicker {
+      display: none;
+    }
+
+    .track-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .time-readout {
+      min-width: 130px;
+      text-align: right;
+      color: var(--muted);
+    }
+
+    .progress-wrap {
+      position: relative;
+      height: 18px;
+      margin-top: 13px;
+      border: 1px solid #777777;
+      border-radius: 999px;
+      background: #4a4a4a;
+      cursor: pointer;
+      touch-action: none;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      width: 0;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--accent);
+      pointer-events: none;
+    }
+
+    .progress-marker-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .progress-marker {
+      position: absolute;
+      top: 0;
+      width: 2px;
+      height: 100%;
+      background: var(--warning);
+      opacity: 0.95;
+    }
+
+    .progress-marker.music-start {
+      width: 3px;
+      background: var(--success);
+    }
+
+    .progress-marker.phrase-boundary {
+      height: 55%;
+      background: var(--accent);
+      opacity: 0.72;
+    }
+
+    .status-line {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 18px;
+      justify-content: space-between;
+      margin-top: 11px;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .status-line strong {
+      color: var(--text);
+    }
+
+    .status-error {
+      color: var(--danger);
+    }
+
+    .status-success {
+      color: var(--success);
+    }
+
+    .dashboard {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .card {
+      min-width: 0;
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--panel-soft);
+    }
+
+    .card h2,
+    .card h3 {
+      margin: 0 0 12px;
+      color: var(--accent);
+      font-size: 1rem;
+      letter-spacing: 0.03em;
+    }
+
+    .metric {
+      font-size: clamp(1.55rem, 3vw, 2.6rem);
+      font-weight: bold;
+      line-height: 1;
+    }
+
+    .metric-subtitle {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.83rem;
+    }
+
+    .metronome-card {
+      grid-column: span 2;
+      display: grid;
+      grid-template-columns: 150px 1fr;
+      gap: 18px;
+      align-items: center;
+    }
+
+    .metronome-orb {
+      display: grid;
+      width: 132px;
+      height: 132px;
+      place-items: center;
+      border: 4px solid var(--accent);
+      border-radius: 50%;
+      background: var(--accent-soft);
+      text-align: center;
+      transition: transform 75ms ease, background-color 75ms ease;
+    }
+
+    .metronome-orb.pulse {
+      transform: scale(1.1);
+      background: rgba(122, 107, 255, 0.64);
+    }
+
+    .metronome-orb.downbeat {
+      border-color: var(--warning);
+      background: rgba(240, 195, 106, 0.35);
+    }
+
+    .beat-number {
+      font-size: 2.8rem;
+      font-weight: bold;
+      line-height: 1;
+    }
+
+    .beat-label {
+      color: var(--muted);
+      font-size: 0.74rem;
+    }
+
+    .metronome-details {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .detail-box {
+      padding: 10px;
+      border: 1px solid #383838;
+      border-radius: 8px;
+      background: #151515;
+    }
+
+    .detail-label {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+    }
+
+    .beat-phase-track {
+      grid-column: 1 / -1;
+      height: 10px;
+      border-radius: 999px;
+      background: #444444;
+      overflow: hidden;
+    }
+
+    .beat-phase-fill {
+      width: 0;
+      height: 100%;
+      background: var(--accent);
+    }
+
+    .toggle-row {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
+
+    .toggle-row label {
+      display: inline-flex;
+      gap: 7px;
+      align-items: center;
+    }
+
+    .wide-card {
+      grid-column: 1 / -1;
+    }
+
+    .analysis-timeline {
+      position: relative;
+      width: 100%;
+      height: 170px;
+      border: 1px solid #444444;
+      border-radius: 9px;
+      background: #101010;
+      overflow: hidden;
+    }
+
+    #analysisCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .analysis-playhead {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      width: 2px;
+      background: #ffffff;
+      pointer-events: none;
+      transform: translateX(-1px);
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      margin-top: 9px;
+      color: var(--muted);
+      font-size: 0.76rem;
+    }
+
+    .legend-key::before {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      margin-right: 6px;
+      content: "";
+      vertical-align: -1px;
+      background: currentColor;
+    }
+
+    .legend-onset {
+      color: #8f8f8f;
+    }
+
+    .legend-region {
+      color: var(--warning);
+    }
+
+    .legend-playhead {
+      color: #ffffff;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.84rem;
+    }
+
+    th,
+    td {
+      padding: 9px 10px;
+      border-bottom: 1px solid #333333;
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    th {
+      color: var(--accent);
+      font-weight: bold;
+    }
+
+    .empty-row {
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    .technical-note {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.55;
+    }
+
+    .analysis-progress {
+      width: 100%;
+      height: 8px;
+      margin-top: 10px;
+      border-radius: 999px;
+      background: #444444;
+      overflow: hidden;
+    }
+
+    .analysis-progress-fill {
+      width: 0;
+      height: 100%;
+      background: var(--accent);
+      transition: width 140ms linear;
+    }
+
+    @media (max-width: 900px) {
+      .dashboard {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .transport-row {
+        grid-template-columns: repeat(3, auto) minmax(100px, 1fr);
+      }
+
+      .file-button {
+        grid-column: 1 / -1;
+      }
+
+      .time-readout {
+        text-align: left;
+      }
+    }
+
+    @media (max-width: 620px) {
+      body {
+        padding: 9px;
+      }
+
+      .dashboard {
+        grid-template-columns: 1fr;
+      }
+
+      .card,
+      .metronome-card,
+      .wide-card {
+        grid-column: 1;
+      }
+
+      .transport-row {
+        grid-template-columns: repeat(3, 1fr);
+      }
+
+      .transport-button {
+        min-width: 0;
+      }
+
+      .track-title,
+      .time-readout,
+      .file-button {
+        grid-column: 1 / -1;
+        text-align: left;
+      }
+
+      .metronome-card {
+        grid-template-columns: 1fr;
+      }
+
+      .metronome-orb {
+        margin: 0 auto;
+      }
+
+      .metronome-details {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app-shell">
+    <section class="transport" aria-label="Music transport">
+      <div class="transport-row">
+        <button id="playPauseButton" class="transport-button" type="button" disabled>Play</button>
+        <button id="rewindButton" class="small-button" type="button" disabled>-10 sec</button>
+        <button id="forwardButton" class="small-button" type="button" disabled>+10 sec</button>
+        <div id="trackTitle" class="track-title">DanceWithSteelBallRun.mp3</div>
+        <div id="timeDisplay" class="time-readout">0:00.000 / 0:00.000</div>
+        <label class="file-button" for="filePicker" title="Fallback for browsers that block loading a local file with fetch">
+          Choose MP3 manually
+        </label>
+        <input id="filePicker" type="file" accept="audio/mpeg,audio/mp3,audio/*">
+      </div>
+
+      <div id="progressBar" class="progress-wrap" role="slider" aria-label="Song progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0">
+        <div id="progressFill" class="progress-fill"></div>
+        <div id="progressMarkers" class="progress-marker-layer"></div>
+      </div>
+
+      <div class="status-line">
+        <span>Playback: <strong id="playbackStatus">Loading audio metadata…</strong></span>
+        <span>Analysis: <strong id="analysisStatus">Waiting to start…</strong></span>
+      </div>
+      <div class="analysis-progress" aria-hidden="true">
+        <div id="analysisProgressFill" class="analysis-progress-fill"></div>
+      </div>
+    </section>
+
+    <section class="dashboard">
+      <article class="card">
+        <h2>Overall BPM</h2>
+        <div id="overallBpm" class="metric">—</div>
+        <div id="overallBpmConfidence" class="metric-subtitle">Not analyzed</div>
+      </article>
+
+      <article class="card">
+        <h2>Overall Meter</h2>
+        <div id="overallMeter" class="metric">—</div>
+        <div id="overallMeterConfidence" class="metric-subtitle">Not analyzed</div>
+      </article>
+
+      <article class="card">
+        <h2>Music / Meter Start</h2>
+        <div id="musicStart" class="metric">—</div>
+        <div id="musicStartConfidence" class="metric-subtitle">Waiting for rhythmic-onset analysis</div>
+      </article>
+
+      <article class="card">
+        <h2>Current Phrase</h2>
+        <div id="currentPhrase" class="metric">—</div>
+        <div id="barInPhrase" class="metric-subtitle">No active four-bar phrase</div>
+      </article>
+
+      <article class="card">
+        <h2>Current BPM</h2>
+        <div id="currentBpm" class="metric">—</div>
+        <div id="currentRegion" class="metric-subtitle">No active tempo region</div>
+      </article>
+
+      <article class="card">
+        <h2>Current Meter</h2>
+        <div id="currentMeter" class="metric">—</div>
+        <div id="currentMeterConfidence" class="metric-subtitle">No active meter region</div>
+      </article>
+
+      <article class="card metronome-card">
+        <div id="metronomeOrb" class="metronome-orb" aria-live="polite">
+          <div>
+            <div id="beatNumber" class="beat-number">—</div>
+            <div class="beat-label">BEAT</div>
+          </div>
+        </div>
+
+        <div class="metronome-details">
+          <div class="detail-box">
+            <span class="detail-label">Bar in region</span>
+            <strong id="barNumber">—</strong>
+          </div>
+
+          <div class="detail-box">
+            <span class="detail-label">Bar in phrase</span>
+            <strong id="metronomeBarInPhrase">—</strong>
+          </div>
+          <div class="detail-box">
+            <span class="detail-label">Beat time</span>
+            <strong id="beatTime">—</strong>
+          </div>
+          <div class="detail-box">
+            <span class="detail-label">Next beat</span>
+            <strong id="nextBeatTime">—</strong>
+          </div>
+          <div class="beat-phase-track" aria-label="Progress through the current beat">
+            <div id="beatPhaseFill" class="beat-phase-fill"></div>
+          </div>
+          <div class="toggle-row">
+            <label>
+              <input id="audibleMetronome" type="checkbox">
+              Audible metronome
+            </label>
+            <span id="syncMessage">Metronome is waiting for analysis.</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="card wide-card">
+        <h2>Detected rhythmic activity</h2>
+        <div id="analysisTimeline" class="analysis-timeline">
+          <canvas id="analysisCanvas"></canvas>
+          <div id="analysisPlayhead" class="analysis-playhead"></div>
+        </div>
+        <div class="legend">
+          <span class="legend-key legend-onset">Onset strength</span>
+          <span class="legend-key legend-region">Tempo or meter boundary</span>
+          <span class="legend-key" style="color: var(--success)">Detected meter start</span>
+          <span class="legend-key" style="color: var(--accent)">Four-bar phrase boundary</span>
+          <span class="legend-key legend-playhead">Playback position</span>
+        </div>
+      </article>
+
+      <article class="card wide-card">
+        <h2>Tempo and meter map</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Region</th>
+                <th>Start</th>
+                <th>End</th>
+                <th>BPM</th>
+                <th>Subdivision BPM</th>
+                <th>Meter</th>
+                <th>Bars</th>
+                <th>Tempo confidence</th>
+                <th>Meter validation</th>
+              </tr>
+            </thead>
+            <tbody id="regionTableBody">
+              <tr class="empty-row"><td colspan="9">Analysis has not completed.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="card wide-card">
+        <h2>Four-bar phrase map</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Phrase</th>
+                <th>Start</th>
+                <th>End</th>
+                <th>Bars</th>
+                <th>Dominant meter</th>
+                <th>Singular interruptions</th>
+                <th>Phrase confidence</th>
+              </tr>
+            </thead>
+            <tbody id="phraseTableBody">
+              <tr class="empty-row"><td colspan="7">Analysis has not completed.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="card wide-card">
+        <h2>Detected changes</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Change</th>
+                <th>Internal action</th>
+              </tr>
+            </thead>
+            <tbody id="changeTableBody">
+              <tr class="empty-row"><td colspan="3">No analysis data yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="card wide-card">
+        <h2>Analysis note</h2>
+        <p class="technical-note">
+          This version first separates ordinary audio activity from sustained rhythmic activity, then locates the first stable pulse grid. Meter is validated on an eighth-note subdivision grid: for example, 5/8 spans five subdivisions, 4/4 spans eight, and 5/4 spans ten. Candidate meters are checked against downbeat accents, internal grouping, repeated bar shapes, neighboring bars, and four-bar phrase placement. Singular bars are retained only when their local evidence and resulting downbeat alignment are stronger than the surrounding meter. The metronome always derives its position from the audio element's current time, so transport changes force an immediate recalculation.
+        </p>
+      </article>
+    </section>
+  </main>
+
+  <audio id="song" preload="metadata" src="DanceWithSteelBallRun.mp3"></audio>
+  <script src="dynamicMusic.js"></script>
+</body>
+</html>
